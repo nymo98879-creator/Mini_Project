@@ -13,7 +13,30 @@ require_once '../../config/database.php';
 <!-- SweetAlert2 for alerts -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-<div class="container">
+<style>
+    .table-container {
+        position: relative;
+        min-height: 500px;
+    }
+    
+    .table-wrapper {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    
+    .pagination-fixed {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        z-index: 1000;
+    }
+</style>
+
+<div class="container ">
     <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#productModal">
         <i class="fas fa-plus"></i> Add Product
     </button>
@@ -21,23 +44,37 @@ require_once '../../config/database.php';
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-primary text-white fw-bold">Products List</div>
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>ID</th>
-                            <th>Category</th>
-                            <th>Name</th>
-                            <th>Price</th>
-                            <th>Stock</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="productTableBody"></tbody>
-                </table>
+            <div class="table-container">
+                <div class="table-wrapper">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-dark sticky-top">
+                            <tr>
+                                <th>ID</th>
+                                <th>Category</th>
+                                <th>Name</th>
+                                <th>Price</th>
+                                <th>Stock</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Page Info (inside card) -->
+            <div class="mt-3">
+                <div id="pageInfo" class="text-muted"></div>
             </div>
         </div>
     </div>
+</div>
+
+<!-- Fixed Pagination at Bottom Right -->
+<div class="pagination-fixed">
+    <nav aria-label="Product pagination">
+        <ul class="pagination mb-0" id="pagination"></ul>
+    </nav>
 </div>
 
 <!-- Add Product Modal -->
@@ -119,16 +156,29 @@ require_once '../../config/database.php';
 
 <script>
     $(document).ready(function () {
-        function loadData() {
+        let currentPage = 1;
+        const itemsPerPage = 10;
+
+        function loadData(page = 1) {
             $.ajax({
                 url: "product/fetch.php",
                 type: "GET",
                 dataType: "json",
                 success: function (data) {
-                    // console.log("Data received:", data);
+                    currentPage = page;
+                    const totalItems = data.length;
+                    const totalPages = Math.ceil(totalItems / itemsPerPage);
+                    
+                    // Calculate start and end index
+                    const startIndex = (page - 1) * itemsPerPage;
+                    const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+                    
+                    // Get items for current page
+                    const pageData = data.slice(startIndex, endIndex);
+                    
                     let rows = '';
-                    if (data.length > 0) {
-                        $.each(data, function (index, product) {
+                    if (pageData.length > 0) {
+                        $.each(pageData, function (index, product) {
                             rows += `<tr>
                             <td>${product.product_id}</td>
                             <td>${product.category_name}</td>
@@ -145,6 +195,16 @@ require_once '../../config/database.php';
                         rows = "<tr><td colspan='6' class='text-center'>No products found</td></tr>";
                     }
                     $("#productTableBody").html(rows);
+                    
+                    // Update page info
+                    if (totalItems > 0) {
+                        $("#pageInfo").text(`Showing ${startIndex + 1} to ${endIndex} of ${totalItems} products`);
+                    } else {
+                        $("#pageInfo").text('No products found');
+                    }
+                    
+                    // Render pagination
+                    renderPagination(totalPages, page);
                 },
                 error: function (xhr, status, error) {
                     console.error("AJAX Error:", error);
@@ -152,6 +212,52 @@ require_once '../../config/database.php';
                 }
             });
         }
+
+        function renderPagination(totalPages, currentPage) {
+            let pagination = '';
+            
+            if (totalPages <= 1) {
+                $(".pagination-fixed").hide();
+                return;
+            }
+            
+            $(".pagination-fixed").show();
+            
+            // Previous button
+            pagination += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                <a class="page-link" href="javascript:void(0);" data-page="${currentPage - 1}">Previous</a>
+            </li>`;
+            
+            // Page numbers
+            for (let i = 1; i <= totalPages; i++) {
+                // Show first page, last page, current page, and pages around current
+                if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+                    pagination += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="javascript:void(0);" data-page="${i}">${i}</a>
+                    </li>`;
+                } else if (i === currentPage - 2 || i === currentPage + 2) {
+                    pagination += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+                }
+            }
+            
+            // Next button
+            pagination += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                <a class="page-link" href="javascript:void(0);" data-page="${currentPage + 1}">Next</a>
+            </li>`;
+            
+            $("#pagination").html(pagination);
+        }
+
+        // Handle pagination clicks
+        $(document).on('click', '#pagination a', function (e) {
+            e.preventDefault();
+            if (!$(this).parent().hasClass('disabled') && !$(this).parent().hasClass('active')) {
+                const page = parseInt($(this).data('page'));
+                loadData(page);
+            }
+            return false;
+        });
+
         loadData();
 
         // Insert Product
@@ -165,11 +271,9 @@ require_once '../../config/database.php';
                 contentType: false,
                 processData: false,
                 success: function (res) {
-                    Swal.fire(
-                        'Success!',
-                        res, 'success');
-
-                    loadData();
+                    Swal.fire('Success!', res, 'success');
+                 
+                    loadData(); 
                 },
                 error: function (xhr, status, error) {
                     console.error("Insert Error:", error);
